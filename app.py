@@ -1,133 +1,175 @@
-#Importing all the library
-from urllib.parse import quote
-import numpy as np
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Mar 12 17:57:42 2021
+
+@author: Teo Bee Guan
+"""
+
 import pandas as pd
-import matplotlib.pyplot as plt
 import yfinance as yf
-import datetime
-plt.style.use('fivethirtyeight')
-from datetime import date
-from keras.models import load_model
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import accuracy_score
 import streamlit as st
+import datetime as dt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import numpy as np
+
+snp500 = pd.read_csv("Datasets/SP500.csv")
+symbols = snp500['Symbol'].sort_values().tolist()
+
+st.set_page_config(
+    page_title="Market Profile Chart (US S&P 500)",
+    layout="wide")
 
 
-#Loading the model
-model = load_model('stock_prediction_model.h5')
-start = '2000-01-01'
-end = '2021-07-31'
+ticker = st.sidebar.selectbox(
+    'Choose a S&P 500 Stock',
+     symbols)
 
-#Function for Visualisation
-def visualisation(q):
- fig = plt.figure(figsize=(12 , 6))
- plt.plot(q.Close , linewidth = 3)
- plt.xlabel("Year")
- plt.ylabel("Price")
- plt.legend(["Closing Price"], loc ="lower right")
- st.pyplot(fig)
+i = st.sidebar.selectbox(
+        "Interval in minutes",
+        ("1m", "5m", "15m", "30m")
+    )
 
-def visualisation2(q): 
- ma100 = q.Close.rolling(100).mean()
- fig = plt.figure(figsize=(12 , 6))
- plt.plot(ma100 , linewidth = 3)
- plt.plot(q.Close , linewidth = 3)
- plt.xlabel("Year")
- plt.ylabel("Price")
- plt.legend(["Closing Price", "Moivng Average 100"], loc ="lower right")
- st.pyplot(fig)
+p = st.sidebar.number_input("How many days (1-30)", min_value=1, max_value=30, step=1)
 
-def visualisation3(q):
- ma100 = q.Close.rolling(100).mean()
- ma200 = q.Close.rolling(200).mean()
- fig2 = plt.figure(figsize=(12 , 6))
- plt.plot(q.Close , linewidth = 3 , color= 'blue')
- plt.plot(ma100 , linewidth = 3 , color = 'red')
- plt.plot(ma200 , linewidth = 3 , color = 'green')
- plt.xlabel("Year")
- plt.ylabel("Price")
- plt.legend(["Closing Price" , "Moving Average 100", "Moving Average 200"], loc ="lower right")
- st.pyplot(fig2)
+stock = yf.Ticker(ticker)
+history_data = stock.history(interval = i, period = str(p) + "d")
 
-def visualisation4(q):
- data_training = pd.DataFrame(q['Close'][0:int(len(q)*0.70)])
- data_testing = pd.DataFrame(q['Close'][int(len(q)*0.70):int(len(q))])   
- scaler = MinMaxScaler(feature_range=(0,1))
- data_training_array = scaler.fit_transform(data_training)
- past_100_days = data_training.tail(100) #Last 100 days of data from training dataset
- final_q = past_100_days.append(data_testing , ignore_index=True)
- input_data = scaler.fit_transform(final_q) #Scaling down the testing data in the range 0 and 1
- x_test = []
- y_test = []
- for i in range(100,input_data.shape[0]):
-   x_test.append(input_data[i-100 : i])
-   y_test.append(input_data[i , 0])
- x_test , y_test = np.array(x_test) , np.array(y_test)
- y_predicted = model.predict(x_test)
- scaler = scaler.scale_
- scale_factor = 1/scaler
- y_predicted = y_predicted * scale_factor
- y_test = y_test * scale_factor
+prices = history_data['Close']
+volumes = history_data['Volume']
 
- fig3 = plt.figure(figsize = (12 , 6))
- plt.plot(y_test , 'blue' , label = 'Original Price')
- plt.plot(y_predicted , 'red' , label = 'Predicted Price')
- plt.xlabel("Time")
- plt.ylabel("Price")
- plt.legend(['Original Price', 'Predicted Price'], loc ="lower right")
- st.pyplot(fig3)
+lower = prices.min()
+upper = prices.max()
 
-#Start
-st.title('Stock Prediction App')
-user_input = st.text_input('Enter the stock ticker for which you wanna predict', 'AAPL')
-quote = yf.download(user_input, start, end)
+prices_ax = np.linspace(lower,upper, num=20)
 
-#Describing the Data
-st.header('Description of Data from 2000 - 2021')
-st.write(quote.describe())
+vol_ax = np.zeros(20)
 
-#Main 
-try:
- st.header("Enter the dates and make sure that both the start and the end date are on weekdays.")
- date_str_start = st.text_input("Please enter the start date(yyyy-mm-dd) ", "2021-06-09")
- date_str_end = st.text_input("Please enter the next day date(yyyy-mm-dd)" , "2021-06-10")
- #Actual quote of stock
- quote2 = yf.download(user_input,start=date_str_start, end=date_str_end)
- actual_quote = quote2[['Close']].to_numpy()
- actual_quote[0][0] = np.format_float_positional(actual_quote[0][0], precision=3)
- actual_open = quote2[['Open']].to_numpy()
- actual_open[0][0] = np.format_float_positional(actual_open[0][0], precision=3)
- #Getting the predicted quote
- quote_p = yf.download(user_input,start=date_str_start, end=date_str_end)
- new_quote_p = quote_p.filter(['Close']) 
- last_100_days = new_quote_p[-100:].values
- scalar = MinMaxScaler(feature_range=(0,1))
- last_100_days_scaled = scalar.fit_transform(last_100_days)
- X_test = []
- X_test.append(last_100_days_scaled)
- X_test = np.array(X_test)
- X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
- pred_price = model.predict(X_test)
- pred_price = scalar.inverse_transform(pred_price)
- predicted = pred_price
- predicted[0][0] = np.format_float_positional(predicted[0][0], precision=2)
+for i in range(0, len(volumes)):
+    if(prices[i] >= prices_ax[0] and prices[i] < prices_ax[1]):
+        vol_ax[0] += volumes[i]   
+        
+    elif(prices[i] >= prices_ax[1] and prices[i] < prices_ax[2]):
+        vol_ax[1] += volumes[i]  
+        
+    elif(prices[i] >= prices_ax[2] and prices[i] < prices_ax[3]):
+        vol_ax[2] += volumes[i] 
+        
+    elif(prices[i] >= prices_ax[3] and prices[i] < prices_ax[4]):
+        vol_ax[3] += volumes[i]  
+        
+    elif(prices[i] >= prices_ax[4] and prices[i] < prices_ax[5]):
+        vol_ax[4] += volumes[i]  
+        
+    elif(prices[i] >= prices_ax[5] and prices[i] < prices_ax[6]):
+        vol_ax[5] += volumes[i] 
+        
+    elif(prices[i] >= prices_ax[6] and prices[i] < prices_ax[7]):
+        vol_ax[6] += volumes[i] 
 
- #Outputting the stock prices
- st.header("Price of Stock ")
- st.write('Opening Price of the Stock : ' ,actual_open[0][0])
- st.write('Actual Closing Price of the Stock : ' , actual_quote[0][0])
- st.write('Predicted Closing Price of the Stock : ' , predicted[0][0])
+    elif(prices[i] >= prices_ax[7] and prices[i] < prices_ax[8]):
+        vol_ax[7] += volumes[i] 
 
- #Visualisation
- st.header("Visualisations")
- st.subheader('Closing Price vs Time')
- visualisation(quote)
- st.subheader('Closing Price vs Moving Average of 100 days')
- visualisation2(quote)
- st.subheader('Closing Price vs Moving Average of 100 days vs Moving Average of 200 days')
- visualisation3(quote)
- st.subheader('Predicted Price vs Original Price')
- visualisation4(quote)
+    elif(prices[i] >= prices_ax[8] and prices[i] < prices_ax[9]):
+        vol_ax[8] += volumes[i] 
 
-except ValueError:
- st.error("Please enter a valid date.")
+    elif(prices[i] >= prices_ax[9] and prices[i] < prices_ax[10]):
+        vol_ax[9] += volumes[i] 
+
+    elif(prices[i] >= prices_ax[10] and prices[i] < prices_ax[11]):
+        vol_ax[10] += volumes[i] 
+
+    elif(prices[i] >= prices_ax[11] and prices[i] < prices_ax[12]):
+        vol_ax[11] += volumes[i] 
+
+    elif(prices[i] >= prices_ax[12] and prices[i] < prices_ax[13]):
+        vol_ax[12] += volumes[i] 
+
+    elif(prices[i] >= prices_ax[13] and prices[i] < prices_ax[14]):
+        vol_ax[13] += volumes[i] 
+
+    elif(prices[i] >= prices_ax[14] and prices[i] < prices_ax[15]):
+        vol_ax[14] += volumes[i]   
+        
+    elif(prices[i] >= prices_ax[15] and prices[i] < prices_ax[16]):
+        vol_ax[15] += volumes[i] 
+        
+    elif(prices[i] >= prices_ax[16] and prices[i] < prices_ax[17]):
+        vol_ax[16] += volumes[i]         
+        
+    elif(prices[i] >= prices_ax[17] and prices[i] < prices_ax[18]):
+        vol_ax[17] += volumes[i]         
+        
+    elif(prices[i] >= prices_ax[18] and prices[i] < prices_ax[19]):
+        vol_ax[18] += volumes[i] 
+    
+    else:
+        vol_ax[19] += volumes[i]
+        
+fig = make_subplots(
+        rows=1, cols=2,
+        column_widths=[0.2, 0.8],
+        specs=[[{}, {}]],
+        horizontal_spacing = 0.01
+    
+    )
+
+fig.add_trace(
+        go.Bar(
+                x = vol_ax, 
+                y= prices_ax,
+                text = np.around(prices_ax,2),
+                textposition='auto',
+                orientation = 'h'
+            ),
+        
+        row = 1, col =1
+    )
+
+
+dateStr = history_data.index.strftime("%d-%m-%Y %H:%M:%S")
+
+fig.add_trace(
+    go.Candlestick(x=dateStr,
+                open=history_data['Open'],
+                high=history_data['High'],
+                low=history_data['Low'],
+                close=history_data['Close'],
+                yaxis= "y2"
+                
+            ),
+    
+        row = 1, col=2
+    )
+        
+
+fig.update_layout(
+    title_text='Market Profile Chart (US S&P 500)', # title of plot
+    bargap=0.01, # gap between bars of adjacent location coordinates,
+    showlegend=False,
+    
+    xaxis = dict(
+            showticklabels = False
+        ),
+    yaxis = dict(
+            showticklabels = False
+        ),
+    
+    yaxis2 = dict(
+            title = "Price (USD)",
+            side="right"
+        
+        )
+
+)
+
+fig.update_yaxes(nticks=20)
+fig.update_yaxes(side="right")
+fig.update_layout(height=800)
+
+config={
+        'modeBarButtonsToAdd': ['drawline']
+    }
+
+st.plotly_chart(fig, use_container_width=True, config=config)
+
